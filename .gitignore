@@ -19,3 +19,6 @@ venv/
 node_modules/
 dist/
 build/
+
+# Personal source spreadsheets & local backups (never commit to Git)
+resource/

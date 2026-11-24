@@ -13,9 +13,10 @@ When an agent session is started directly inside this repository rather than fro
 
 ## Local Development & Verification
 
-- **Install**: `<command>`
-- **Test**: `<command>`
-- **Lint / Typecheck**: `<command>`
+- **Install**: `npm install` (Windows PowerShell: `npm.cmd install`)
+- **Dev**: `npm run dev` (`npm.cmd run dev`)
+- **Test**: `npm run test` (`npm.cmd run test`)
+- **Lint / Typecheck / Build**: `npm run lint && npm run typecheck && npm run build` (`npm.cmd run lint && npm.cmd run typecheck && npm.cmd run build`)
 
 ## Local Boundaries
 
