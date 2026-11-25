@@ -6,6 +6,7 @@ import type {
   MonthConfig,
   ShiftNumber,
   ShiftSlot,
+  ShiftSlotTarget,
 } from '../../domain/types';
 
 export interface WorkspaceData {
@@ -24,6 +25,7 @@ export interface DataRepository {
   upsertShiftSlot(slot: ShiftSlot): Promise<void>;
   deleteShiftSlot(shiftDate: string, shiftNumber: ShiftNumber): Promise<void>;
   bulkUpsertShiftSlots(slots: ShiftSlot[]): Promise<void>;
+  bulkDeleteShiftSlots(targets: ShiftSlotTarget[]): Promise<void>;
   upsertMonthConfig(config: MonthConfig): Promise<void>;
   bulkUpsertMonthConfigs(configs: MonthConfig[]): Promise<void>;
   upsertAhTask(task: AhTask): Promise<void>;

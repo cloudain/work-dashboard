@@ -173,12 +173,12 @@ export function FinanceView({
       </div>
 
       {/* Selected Month KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className="col-span-2 lg:col-span-1 rounded-2xl bg-teal-700 text-white p-4 shadow-sm">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+        <div className="col-span-2 lg:col-span-1 rounded-2xl bg-teal-700 text-white p-3.5 sm:p-4 shadow-sm">
           <div className="text-xs text-teal-100">
             Ngoài giờ {formatMonthVN(activeYm)}
           </div>
-          <div className="mt-1 text-2xl font-bold">{formatVND(activeSummary.sideTotal)}</div>
+          <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums">{formatVND(activeSummary.sideTotal)}</div>
           {goalPct !== null && settings.monthlyIncomeGoal && (
             <div className="mt-2">
               <div className="flex items-center justify-between text-[11px] text-teal-100 mb-1">
@@ -197,11 +197,11 @@ export function FinanceView({
           )}
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+        <div className="rounded-2xl bg-white border border-slate-200 p-3.5 sm:p-4 shadow-sm">
           <div className="text-xs text-slate-500">
             Lương ca ({activeSummary.clinicLabel})
           </div>
-          <div className="mt-1 text-lg font-bold text-slate-900">
+          <div className="mt-1 text-base sm:text-lg font-bold text-slate-900 tabular-nums">
             {formatVND(activeSummary.shiftIncome)}
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">
@@ -211,9 +211,9 @@ export function FinanceView({
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+        <div className="rounded-2xl bg-white border border-slate-200 p-3.5 sm:p-4 shadow-sm">
           <div className="text-xs text-slate-500">Com {activeSummary.clinicLabel}</div>
-          <div className="mt-1 text-lg font-bold text-sky-700">
+          <div className="mt-1 text-base sm:text-lg font-bold text-sky-700 tabular-nums">
             {formatVND(activeSummary.comIncome)}
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">
@@ -223,17 +223,17 @@ export function FinanceView({
           </div>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+        <div className="rounded-2xl bg-white border border-slate-200 p-3.5 sm:p-4 shadow-sm">
           <div className="text-xs text-slate-500">AH (Viết báo)</div>
-          <div className="mt-1 text-lg font-bold text-violet-700">
+          <div className="mt-1 text-base sm:text-lg font-bold text-violet-700 tabular-nums">
             {formatVND(activeSummary.ahIncome)}
           </div>
           <div className="text-[11px] text-slate-500 mt-0.5">Thực nhận trong tháng</div>
         </div>
 
-        <div className="rounded-2xl bg-white border border-slate-200 p-4 shadow-sm">
+        <div className="rounded-2xl bg-white border border-slate-200 p-3.5 sm:p-4 shadow-sm">
           <div className="text-xs text-slate-500">Thưởng / Điều chỉnh</div>
-          <div className="mt-1 text-lg font-bold text-amber-600">
+          <div className="mt-1 text-base sm:text-lg font-bold text-amber-600 tabular-nums">
             {formatVND(activeSummary.bonusIncome)}
           </div>
           {settings.showHospitalSalary && activeSummary.hospitalSalary !== null && (
@@ -497,7 +497,9 @@ export function FinanceView({
           <table className="w-full text-xs text-right min-w-[640px]">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
-                <th className="text-left px-4 py-2.5 font-semibold">Tháng</th>
+                <th className="sticky left-0 z-10 bg-slate-50 text-left px-3 sm:px-4 py-2.5 font-semibold shadow-[1px_0_0_rgba(226,232,240,1)]">
+                  Tháng
+                </th>
                 <th className="px-3 py-2.5 font-semibold">Lương ca</th>
                 <th className="px-3 py-2.5 font-semibold">Com KFC</th>
                 <th className="px-3 py-2.5 font-semibold">AH</th>
@@ -517,7 +519,11 @@ export function FinanceView({
                     row.yearMonth === activeYm ? 'bg-teal-50/70 font-semibold' : ''
                   }`}
                 >
-                  <td className="text-left px-4 py-2 font-semibold text-slate-800">
+                  <td
+                    className={`sticky left-0 z-10 text-left px-3 sm:px-4 py-2 font-semibold text-slate-800 shadow-[1px_0_0_rgba(241,245,249,1)] ${
+                      row.yearMonth === activeYm ? 'bg-teal-50' : 'bg-white'
+                    }`}
+                  >
                     {row.label}{' '}
                     {row.isHistorical && (
                       <span className="ml-1 text-[10px] rounded bg-slate-100 px-1.5 py-0.5 text-slate-500">
@@ -540,7 +546,9 @@ export function FinanceView({
             </tbody>
             <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900">
               <tr>
-                <td className="text-left px-4 py-2.5">Tổng cộng</td>
+                <td className="sticky left-0 z-10 bg-slate-50 text-left px-3 sm:px-4 py-2.5 shadow-[1px_0_0_rgba(226,232,240,1)]">
+                  Tổng cộng
+                </td>
                 <td className="px-3 py-2.5">{formatVND(annualStats.totalShiftIncome)}</td>
                 <td className="px-3 py-2.5">{formatVND(annualStats.totalComIncome)}</td>
                 <td className="px-3 py-2.5">{formatVND(annualStats.totalAhIncome)}</td>
@@ -551,7 +559,9 @@ export function FinanceView({
                 )}
               </tr>
               <tr className="text-slate-600 font-semibold">
-                <td className="text-left px-4 py-2">Trung bình (tháng &gt; 0)</td>
+                <td className="sticky left-0 z-10 bg-slate-50 text-left px-3 sm:px-4 py-2 shadow-[1px_0_0_rgba(226,232,240,1)]">
+                  Trung bình (tháng &gt; 0)
+                </td>
                 <td className="px-3 py-2">{formatVND(annualStats.avgShiftIncome)}</td>
                 <td className="px-3 py-2">{formatVND(annualStats.avgComIncome)}</td>
                 <td className="px-3 py-2">{formatVND(annualStats.avgAhIncome)}</td>

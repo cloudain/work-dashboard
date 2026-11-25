@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { cloneDefaultBranches } from '../branches';
 import { getWeekBlock, slotKey } from '../calendar';
 import {
+  applySelectionTargets,
   buildDragFillPlan,
+  collectFilledTargetsForDate,
+  collectFilledTargetsForMonth,
+  collectFilledTargetsForWeek,
+  collectFilledTargetsInRect,
   computeDragFillCoords,
   computeQuickDayPopoverPosition,
+  parseSelectedSlotKeys,
 } from '../dragFill';
 import type { ShiftSlot } from '../types';
 
@@ -237,5 +243,89 @@ describe('computeQuickDayPopoverPosition', () => {
       viewport,
     );
     expect(pos).toEqual({ left: 370, top: 680 - 188 - 6 });
+  });
+});
+
+describe('bulk-delete selection helpers', () => {
+  const sampleSlots: ShiftSlot[] = [
+    {
+      shiftDate: '2026-10-26',
+      shiftNumber: 1,
+      status: 'BV',
+      branchCode: null,
+      procedureCount: 0,
+      note: '',
+    },
+    {
+      shiftDate: '2026-10-26',
+      shiftNumber: 2,
+      status: 'NGHI',
+      branchCode: null,
+      procedureCount: 0,
+      note: '',
+    },
+    {
+      shiftDate: '2026-10-28',
+      shiftNumber: 1,
+      status: 'KFC',
+      branchCode: 'CN1',
+      procedureCount: 1,
+      note: '',
+    },
+    {
+      shiftDate: '2026-11-02',
+      shiftNumber: 3,
+      status: 'RANH',
+      branchCode: null,
+      procedureCount: 0,
+      note: '',
+    },
+  ];
+  const sampleMap = new Map(sampleSlots.map((s) => [slotKey(s.shiftDate, s.shiftNumber), s]));
+
+  it('collects only filled targets in rect, date, week, and month', () => {
+    const rectTargets = collectFilledTargetsInRect(
+      week,
+      { dayIndex: 0, shiftNumber: 1 },
+      { dayIndex: 2, shiftNumber: 2 },
+      sampleMap,
+    );
+    expect(rectTargets).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 1 },
+      { shiftDate: '2026-10-26', shiftNumber: 2 },
+      { shiftDate: '2026-10-28', shiftNumber: 1 },
+    ]);
+
+    expect(collectFilledTargetsForDate('2026-10-26', sampleMap)).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 1 },
+      { shiftDate: '2026-10-26', shiftNumber: 2 },
+    ]);
+
+    expect(collectFilledTargetsForWeek(week, sampleMap)).toHaveLength(3);
+
+    expect(collectFilledTargetsForMonth('2026-11', sampleSlots)).toEqual([
+      { shiftDate: '2026-11-02', shiftNumber: 3 },
+    ]);
+  });
+
+  it('applies add, remove, and toggle selection modes and parses keys', () => {
+    const dayTargets = collectFilledTargetsForDate('2026-10-26', sampleMap);
+    const added = applySelectionTargets(new Set(), dayTargets, 'add');
+    expect(added.size).toBe(2);
+
+    // Toggle when all selected -> removes all
+    const toggledOff = applySelectionTargets(added, dayTargets, 'toggle');
+    expect(toggledOff.size).toBe(0);
+
+    // Toggle when partially selected -> adds remaining
+    const partial = new Set([slotKey('2026-10-26', 1)]);
+    const toggledOn = applySelectionTargets(partial, dayTargets, 'toggle');
+    expect(toggledOn.size).toBe(2);
+
+    // Remove mode
+    const removed = applySelectionTargets(toggledOn, [dayTargets[0]], 'remove');
+    expect(parseSelectedSlotKeys(removed)).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 2 },
+    ]);
   });
 });

@@ -98,7 +98,7 @@ export function ShiftEditorModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[75dvh] overflow-y-auto">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
               Trạng thái Ô ca
@@ -224,7 +224,7 @@ export function ShiftEditorModal({
           </div>
         </div>
 
-        <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+        <div className="px-5 py-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:pb-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
           {existingSlot ? (
             <button
               type="button"

@@ -40,6 +40,11 @@ export interface ShiftSlot {
   note: string;
 }
 
+export interface ShiftSlotTarget {
+  shiftDate: string; // YYYY-MM-DD
+  shiftNumber: ShiftNumber;
+}
+
 export interface MonthConfig {
   yearMonth: string; // YYYY-MM
   shiftRate: number;

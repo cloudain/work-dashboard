@@ -8,6 +8,7 @@ import type {
   MonthConfig,
   ShiftNumber,
   ShiftSlot,
+  ShiftSlotTarget,
 } from '../../domain/types';
 import type { DataRepository, WorkspaceData } from './types';
 
@@ -90,6 +91,14 @@ export class LocalRepository implements DataRepository {
       map.set(`${s.shiftDate}|${s.shiftNumber}`, s);
     }
     data.slots = Array.from(map.values());
+    writeStore(data);
+  }
+
+  async bulkDeleteShiftSlots(targets: ShiftSlotTarget[]): Promise<void> {
+    if (targets.length === 0) return;
+    const targetKeys = new Set(targets.map((t) => `${t.shiftDate}|${t.shiftNumber}`));
+    const data = readStore();
+    data.slots = data.slots.filter((s) => !targetKeys.has(`${s.shiftDate}|${s.shiftNumber}`));
     writeStore(data);
   }
 

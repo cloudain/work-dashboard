@@ -1,6 +1,6 @@
 import { isValidBranchShift } from './branches';
 import { slotKey, type WeekBlock } from './calendar';
-import type { Branch, ShiftNumber, ShiftSlot } from './types';
+import type { Branch, ShiftNumber, ShiftSlot, ShiftSlotTarget } from './types';
 
 export interface GridCoord {
   dayIndex: number; // 0..6
@@ -127,4 +127,115 @@ export function computeQuickDayPopoverPosition(
 
   const top = Math.min(Math.max(belowTop, margin), maxTop);
   return { left, top };
+}
+
+/**
+ * Collects all existing (filled) shift targets within the inclusive rectangle from `start` to `end`.
+ */
+export function collectFilledTargetsInRect(
+  week: WeekBlock,
+  start: GridCoord,
+  end: GridCoord,
+  slotsByKey: Map<string, ShiftSlot>,
+): ShiftSlotTarget[] {
+  const targets: ShiftSlotTarget[] = [];
+  for (const coord of computeDragFillCoords(start, end)) {
+    const day = week.days[coord.dayIndex];
+    if (!day) continue;
+    if (slotsByKey.has(slotKey(day.dateStr, coord.shiftNumber))) {
+      targets.push({ shiftDate: day.dateStr, shiftNumber: coord.shiftNumber });
+    }
+  }
+  return targets;
+}
+
+/**
+ * Collects all filled shift targets on a given date (`YYYY-MM-DD`).
+ */
+export function collectFilledTargetsForDate(
+  dateStr: string,
+  slotsByKey: Map<string, ShiftSlot>,
+): ShiftSlotTarget[] {
+  const targets: ShiftSlotTarget[] = [];
+  for (const shiftNumber of [1, 2, 3] as const) {
+    if (slotsByKey.has(slotKey(dateStr, shiftNumber))) {
+      targets.push({ shiftDate: dateStr, shiftNumber });
+    }
+  }
+  return targets;
+}
+
+/**
+ * Collects all filled shift targets within a week block.
+ */
+export function collectFilledTargetsForWeek(
+  week: WeekBlock,
+  slotsByKey: Map<string, ShiftSlot>,
+): ShiftSlotTarget[] {
+  const targets: ShiftSlotTarget[] = [];
+  for (const day of week.days) {
+    for (const shiftNumber of [1, 2, 3] as const) {
+      if (slotsByKey.has(slotKey(day.dateStr, shiftNumber))) {
+        targets.push({ shiftDate: day.dateStr, shiftNumber });
+      }
+    }
+  }
+  return targets;
+}
+
+/**
+ * Collects all filled shift targets belonging to `yearMonth` (`YYYY-MM`).
+ */
+export function collectFilledTargetsForMonth(
+  yearMonth: string,
+  slots: ShiftSlot[],
+): ShiftSlotTarget[] {
+  return slots
+    .filter((s) => s.shiftDate.startsWith(yearMonth))
+    .map((s) => ({ shiftDate: s.shiftDate, shiftNumber: s.shiftNumber }));
+}
+
+/**
+ * Returns a new Set of slot keys after applying `targets` with `add`, `remove`, or `toggle` semantics.
+ */
+export function applySelectionTargets(
+  current: Set<string>,
+  targets: ShiftSlotTarget[],
+  mode: 'add' | 'remove' | 'toggle',
+): Set<string> {
+  const next = new Set(current);
+  if (targets.length === 0) return next;
+
+  const keys = targets.map((t) => slotKey(t.shiftDate, t.shiftNumber));
+  if (mode === 'add') {
+    for (const k of keys) next.add(k);
+    return next;
+  }
+  if (mode === 'remove') {
+    for (const k of keys) next.delete(k);
+    return next;
+  }
+
+  const allSelected = keys.every((k) => next.has(k));
+  if (allSelected) {
+    for (const k of keys) next.delete(k);
+  } else {
+    for (const k of keys) next.add(k);
+  }
+  return next;
+}
+
+/**
+ * Parses `"YYYY-MM-DD|N"` slot keys back into `ShiftSlotTarget` objects.
+ */
+export function parseSelectedSlotKeys(keys: Iterable<string>): ShiftSlotTarget[] {
+  const targets: ShiftSlotTarget[] = [];
+  for (const key of keys) {
+    const [shiftDate, rawNum] = key.split('|');
+    const num = Number(rawNum);
+    if (shiftDate && (num === 1 || num === 2 || num === 3)) {
+      targets.push({ shiftDate, shiftNumber: num });
+    }
+  }
+  return targets;
 }

@@ -10,6 +10,7 @@ import type {
   MonthConfig,
   ShiftNumber,
   ShiftSlot,
+  ShiftSlotTarget,
   ShiftStatus,
   AhTaskStatus,
 } from '../../domain/types';
@@ -218,6 +219,30 @@ export class SupabaseRepository implements DataRepository {
         { onConflict: 'user_id,shift_date,shift_number' },
       );
     assertNoError(error);
+  }
+
+  async bulkDeleteShiftSlots(targets: ShiftSlotTarget[]): Promise<void> {
+    if (targets.length === 0) return;
+    const byDate = new Map<string, Set<ShiftNumber>>();
+    for (const t of targets) {
+      let set = byDate.get(t.shiftDate);
+      if (!set) {
+        set = new Set<ShiftNumber>();
+        byDate.set(t.shiftDate, set);
+      }
+      set.add(t.shiftNumber);
+    }
+    await Promise.all(
+      Array.from(byDate.entries()).map(async ([shiftDate, shiftNumbers]) => {
+        const { error } = await this.client
+          .from('shift_slots')
+          .delete()
+          .eq('user_id', this.userId)
+          .eq('shift_date', shiftDate)
+          .in('shift_number', Array.from(shiftNumbers));
+        assertNoError(error);
+      }),
+    );
   }
 
   private toMonthConfigRow(c: MonthConfig) {

@@ -14,6 +14,7 @@ import type {
   MonthConfig,
   ShiftNumber,
   ShiftSlot,
+  ShiftSlotTarget,
 } from './domain/types';
 import { LocalRepository } from './lib/repository/localRepository';
 import { SupabaseRepository } from './lib/repository/supabaseRepository';
@@ -146,14 +147,22 @@ export function App() {
     await repo.bulkUpsertShiftSlots(slots);
   };
 
-  const handleBulkDeleteDay = async (shiftDate: string) => {
-    if (!repo || !data) return;
-    const daySlots = data.slots.filter((s) => s.shiftDate === shiftDate);
+  const handleBulkDeleteSlots = async (targets: ShiftSlotTarget[]) => {
+    if (!repo || !data || targets.length === 0) return;
+    const targetKeys = new Set(targets.map((t) => slotKey(t.shiftDate, t.shiftNumber)));
     setData({
       ...data,
-      slots: data.slots.filter((s) => s.shiftDate !== shiftDate),
+      slots: data.slots.filter((s) => !targetKeys.has(slotKey(s.shiftDate, s.shiftNumber))),
     });
-    await Promise.all(daySlots.map((s) => repo.deleteShiftSlot(s.shiftDate, s.shiftNumber)));
+    await repo.bulkDeleteShiftSlots(targets);
+  };
+
+  const handleBulkDeleteDay = async (shiftDate: string) => {
+    if (!data) return;
+    const dayTargets: ShiftSlotTarget[] = data.slots
+      .filter((s) => s.shiftDate === shiftDate)
+      .map((s) => ({ shiftDate: s.shiftDate, shiftNumber: s.shiftNumber }));
+    await handleBulkDeleteSlots(dayTargets);
   };
 
   const handleUpsertMonthConfig = async (cfg: MonthConfig) => {
@@ -205,7 +214,7 @@ export function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 md:pb-6 md:pl-60">
+    <div className="min-h-screen bg-slate-50 pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-6 md:pl-60">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-60 bg-white border-r border-slate-200 p-4">
         <div className="flex items-center gap-2.5 px-2 py-2 mb-6">
@@ -269,6 +278,7 @@ export function App() {
                 onUpsertSlot={handleUpsertSlot}
                 onDeleteSlot={handleDeleteSlot}
                 onBulkUpsertSlots={handleBulkUpsertSlots}
+                onBulkDeleteSlots={handleBulkDeleteSlots}
                 onBulkDeleteDay={handleBulkDeleteDay}
               />
             )}
@@ -305,7 +315,7 @@ export function App() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 grid grid-cols-3">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-sm border-t border-slate-200 grid grid-cols-3 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_8px_rgba(15,23,42,0.06)]">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = tab === item.id;
