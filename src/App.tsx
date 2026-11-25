@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Settings, Stethoscope, Wallet } from 'lucide-react';
+import { CalendarDays, Settings, Wallet } from 'lucide-react';
 import { AuthGate } from './components/AuthGate';
 import { FinanceView } from './components/FinanceView';
 import { ScheduleView } from './components/ScheduleView';
@@ -218,9 +218,11 @@ export function App() {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-60 bg-white border-r border-slate-200 p-4">
         <div className="flex items-center gap-2.5 px-2 py-2 mb-6">
-          <div className="h-9 w-9 rounded-xl bg-teal-700 text-white flex items-center justify-center">
-            <Stethoscope className="h-5 w-5" />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}pwa-192x192.png`}
+            alt="Work Dashboard"
+            className="h-9 w-9 rounded-xl shadow-xs object-cover shrink-0"
+          />
           <div>
             <div className="text-sm font-bold text-slate-900">Work Dashboard</div>
             <div className="text-[11px] text-slate-500">KFC & AH Tracker</div>
