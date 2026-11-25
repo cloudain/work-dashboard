@@ -4,6 +4,8 @@ import { getWeekBlock, slotKey } from '../calendar';
 import {
   applySelectionTargets,
   buildDragFillPlan,
+  buildPasteWeekPlan,
+  captureWeekSnapshot,
   collectFilledTargetsForDate,
   collectFilledTargetsForMonth,
   collectFilledTargetsForWeek,
@@ -327,5 +329,95 @@ describe('bulk-delete selection helpers', () => {
     expect(parseSelectedSlotKeys(removed)).toEqual([
       { shiftDate: '2026-10-26', shiftNumber: 2 },
     ]);
+  });
+});
+
+describe('week copy & paste helpers', () => {
+  const targetWeek = getWeekBlock('2026-11-02', '2026-11');
+
+  it('captures filled slots of source week and pastes in merge mode', () => {
+    const srcSlots: ShiftSlot[] = [
+      {
+        shiftDate: '2026-10-26', // T2
+        shiftNumber: 1,
+        status: 'BV',
+        branchCode: null,
+        procedureCount: 0,
+        note: 'Trực',
+      },
+      {
+        shiftDate: '2026-10-28', // T4
+        shiftNumber: 2,
+        status: 'KFC',
+        branchCode: 'CN1',
+        procedureCount: 4,
+        note: 'Đông',
+      },
+    ];
+    const srcMap = new Map(srcSlots.map((s) => [slotKey(s.shiftDate, s.shiftNumber), s]));
+
+    const snapshot = captureWeekSnapshot(week, srcMap, '26/10 – 01/11');
+    expect(snapshot.sourceMondayStr).toBe('2026-10-26');
+    expect(snapshot.slots).toEqual([
+      { dayIndex: 0, shiftNumber: 1, status: 'BV', branchCode: null },
+      { dayIndex: 2, shiftNumber: 2, status: 'KFC', branchCode: 'CN1' },
+    ]);
+
+    const existingTargetSlots: ShiftSlot[] = [
+      {
+        shiftDate: '2026-11-06', // T6
+        shiftNumber: 3,
+        status: 'NGHI',
+        branchCode: null,
+        procedureCount: 0,
+        note: '',
+      },
+    ];
+    const targetMap = new Map(
+      existingTargetSlots.map((s) => [slotKey(s.shiftDate, s.shiftNumber), s]),
+    );
+
+    const mergePlan = buildPasteWeekPlan(targetWeek, snapshot, targetMap, branchMap, false);
+    expect(mergePlan.skippedCount).toBe(0);
+    expect(mergePlan.targetsToDelete).toEqual([]);
+    expect(mergePlan.slotsToUpsert).toEqual([
+      {
+        shiftDate: '2026-11-02',
+        shiftNumber: 1,
+        status: 'BV',
+        branchCode: null,
+        procedureCount: 0,
+        note: '',
+      },
+      {
+        shiftDate: '2026-11-04',
+        shiftNumber: 2,
+        status: 'KFC',
+        branchCode: 'CN1',
+        procedureCount: 0,
+        note: '',
+      },
+    ]);
+
+    const replacePlan = buildPasteWeekPlan(targetWeek, snapshot, targetMap, branchMap, true);
+    expect(replacePlan.targetsToDelete).toEqual([
+      { shiftDate: '2026-11-06', shiftNumber: 3 },
+    ]);
+  });
+
+  it('skips invalid KFC branch shifts when pasting', () => {
+    const snapshot = {
+      sourceMondayStr: '2026-10-26',
+      sourceLabel: '26/10 – 01/11',
+      slots: [
+        { dayIndex: 0, shiftNumber: 2 as const, status: 'KFC' as const, branchCode: 'CN4' },
+        { dayIndex: 0, shiftNumber: 1 as const, status: 'KFC' as const, branchCode: 'CN4' },
+      ],
+    };
+
+    const plan = buildPasteWeekPlan(targetWeek, snapshot, new Map(), branchMap, false);
+    expect(plan.skippedCount).toBe(1);
+    expect(plan.slotsToUpsert).toHaveLength(1);
+    expect(plan.slotsToUpsert[0].shiftNumber).toBe(1);
   });
 });

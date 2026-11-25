@@ -239,3 +239,97 @@ export function parseSelectedSlotKeys(keys: Iterable<string>): ShiftSlotTarget[]
   }
   return targets;
 }
+
+export interface CopiedWeekSlot {
+  dayIndex: number; // 0 (T2) .. 6 (CN)
+  shiftNumber: ShiftNumber;
+  status: ShiftSlot['status'];
+  branchCode: string | null;
+}
+
+export interface CopiedWeekSnapshot {
+  sourceMondayStr: string;
+  sourceLabel: string;
+  slots: CopiedWeekSlot[];
+}
+
+export interface PasteWeekPlan {
+  slotsToUpsert: ShiftSlot[];
+  targetsToDelete: ShiftSlotTarget[];
+  skippedCount: number;
+}
+
+/**
+ * Captures all filled shift slots of `week` relative to their weekday index (0..6).
+ */
+export function captureWeekSnapshot(
+  week: WeekBlock,
+  slotsByKey: Map<string, ShiftSlot>,
+  sourceLabel: string,
+): CopiedWeekSnapshot {
+  const slots: CopiedWeekSlot[] = [];
+  for (const day of week.days) {
+    for (const shiftNumber of [1, 2, 3] as const) {
+      const slot = slotsByKey.get(slotKey(day.dateStr, shiftNumber));
+      if (!slot) continue;
+      slots.push({
+        dayIndex: day.dayIndex,
+        shiftNumber,
+        status: slot.status,
+        branchCode: slot.status === 'KFC' ? slot.branchCode : null,
+      });
+    }
+  }
+  return {
+    sourceMondayStr: week.mondayStr,
+    sourceLabel,
+    slots,
+  };
+}
+
+/**
+ * Builds the upsert and optional delete plan when pasting a copied week snapshot onto `targetWeek`.
+ */
+export function buildPasteWeekPlan(
+  targetWeek: WeekBlock,
+  snapshot: CopiedWeekSnapshot,
+  existingSlotsByKey: Map<string, ShiftSlot>,
+  branchMap: Map<string, Branch>,
+  replaceTargetWeek: boolean,
+): PasteWeekPlan {
+  const slotsToUpsert: ShiftSlot[] = [];
+  const upsertedKeys = new Set<string>();
+  let skippedCount = 0;
+
+  for (const item of snapshot.slots) {
+    const day = targetWeek.days[item.dayIndex];
+    if (!day) continue;
+
+    if (item.status === 'KFC') {
+      const branch = item.branchCode ? branchMap.get(item.branchCode) : undefined;
+      if (!branch || !isValidBranchShift(branch, day.dateStr, item.shiftNumber)) {
+        skippedCount += 1;
+        continue;
+      }
+    }
+
+    const key = slotKey(day.dateStr, item.shiftNumber);
+    upsertedKeys.add(key);
+    slotsToUpsert.push({
+      shiftDate: day.dateStr,
+      shiftNumber: item.shiftNumber,
+      status: item.status,
+      branchCode: item.status === 'KFC' ? item.branchCode : null,
+      procedureCount: 0,
+      note: '',
+    });
+  }
+
+  let targetsToDelete: ShiftSlotTarget[] = [];
+  if (replaceTargetWeek) {
+    const existing = collectFilledTargetsForWeek(targetWeek, existingSlotsByKey);
+    targetsToDelete = existing.filter((t) => !upsertedKeys.has(slotKey(t.shiftDate, t.shiftNumber)));
+  }
+
+  return { slotsToUpsert, targetsToDelete, skippedCount };
+}
