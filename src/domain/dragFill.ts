@@ -10,6 +10,7 @@ export interface GridCoord {
 export interface DragFillPlan {
   selectedKeys: Set<string>;
   skippedKeys: Set<string>;
+  preservedKeys: Set<string>;
   slotsToUpsert: ShiftSlot[];
 }
 
@@ -56,8 +57,8 @@ export function computeDragFillCoords(start: GridCoord, end: GridCoord): GridCoo
 }
 
 /**
- * Computes the preview selection, skipped invalid branch shifts, and slots to upsert
- * when dragging from `start` to `end` within `week`.
+ * Computes the preview selection, skipped invalid branch shifts, preserved matching KFC slots,
+ * and slots to upsert when dragging from `start` to `end` within `week`.
  */
 export function buildDragFillPlan(
   week: WeekBlock,
@@ -65,9 +66,11 @@ export function buildDragFillPlan(
   start: GridCoord,
   end: GridCoord,
   branchMap: Map<string, Branch>,
+  existingSlotsByKey?: Map<string, ShiftSlot>,
 ): DragFillPlan {
   const selectedKeys = new Set<string>();
   const skippedKeys = new Set<string>();
+  const preservedKeys = new Set<string>();
   const slotsToUpsert: ShiftSlot[] = [];
 
   const coords = computeDragFillCoords(start, end);
@@ -88,6 +91,18 @@ export function buildDragFillPlan(
         skippedKeys.add(key);
         continue;
       }
+
+      if (existingSlotsByKey) {
+        const existing = existingSlotsByKey.get(key);
+        if (
+          existing &&
+          existing.status === 'KFC' &&
+          existing.branchCode === sourceSlot.branchCode
+        ) {
+          preservedKeys.add(key);
+          continue;
+        }
+      }
     }
 
     slotsToUpsert.push({
@@ -100,7 +115,7 @@ export function buildDragFillPlan(
     });
   }
 
-  return { selectedKeys, skippedKeys, slotsToUpsert };
+  return { selectedKeys, skippedKeys, preservedKeys, slotsToUpsert };
 }
 
 /**
@@ -332,4 +347,301 @@ export function buildPasteWeekPlan(
   }
 
   return { slotsToUpsert, targetsToDelete, skippedCount };
+}
+
+export const MAX_UNDO_HISTORY = 10;
+
+export interface UndoEntry {
+  label: string;
+  restoreUpserts: ShiftSlot[];
+  restoreDeletes: ShiftSlotTarget[];
+}
+
+function slotsEqual(a: ShiftSlot, b: ShiftSlot): boolean {
+  return (
+    a.status === b.status &&
+    a.branchCode === b.branchCode &&
+    a.procedureCount === b.procedureCount &&
+    a.note === b.note
+  );
+}
+
+/**
+ * Captures the pre-mutation state of every slot touched by `slotsToUpsert` and `targetsToDelete`
+ * so a bulk action can be reverted losslessly (including `procedureCount` and `note`).
+ */
+export function createUndoEntry(
+  label: string,
+  existingSlotsByKey: Map<string, ShiftSlot>,
+  slotsToUpsert: ShiftSlot[],
+  targetsToDelete: ShiftSlotTarget[] = [],
+): UndoEntry | null {
+  const restoreUpserts: ShiftSlot[] = [];
+  const restoreDeletes: ShiftSlotTarget[] = [];
+  const seen = new Set<string>();
+
+  for (const next of slotsToUpsert) {
+    const key = slotKey(next.shiftDate, next.shiftNumber);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const prev = existingSlotsByKey.get(key);
+    if (!prev) {
+      restoreDeletes.push({ shiftDate: next.shiftDate, shiftNumber: next.shiftNumber });
+    } else if (!slotsEqual(prev, next)) {
+      restoreUpserts.push({ ...prev });
+    }
+  }
+
+  for (const target of targetsToDelete) {
+    const key = slotKey(target.shiftDate, target.shiftNumber);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const prev = existingSlotsByKey.get(key);
+    if (prev) {
+      restoreUpserts.push({ ...prev });
+    }
+  }
+
+  if (restoreUpserts.length === 0 && restoreDeletes.length === 0) {
+    return null;
+  }
+
+  return { label, restoreUpserts, restoreDeletes };
+}
+
+/**
+ * Pushes an UndoEntry onto the bounded history stack, dropping the oldest entry beyond `maxSize`.
+ */
+export function pushUndoEntry(
+  stack: UndoEntry[],
+  entry: UndoEntry | null,
+  maxSize = MAX_UNDO_HISTORY,
+): UndoEntry[] {
+  if (!entry || maxSize <= 0) return stack;
+  const next = [...stack, entry];
+  return next.length > maxSize ? next.slice(next.length - maxSize) : next;
+}
+
+/**
+ * Pops the most recent UndoEntry from the history stack.
+ */
+export function popUndoEntry(stack: UndoEntry[]): {
+  entry: UndoEntry | null;
+  rest: UndoEntry[];
+} {
+  if (stack.length === 0) {
+    return { entry: null, rest: stack };
+  }
+  return {
+    entry: stack[stack.length - 1],
+    rest: stack.slice(0, -1),
+  };
+}
+
+export type PaintBrush =
+  | { kind: 'status'; status: 'BV' | 'NGHI' | 'RANH' }
+  | { kind: 'kfc'; branchCode: string }
+  | { kind: 'erase' };
+
+export interface SlotCellCoord {
+  dateStr: string;
+  shiftNumber: ShiftNumber;
+}
+
+export interface PaintPlan {
+  touchedKeys: Set<string>;
+  skippedKeys: Set<string>;
+  preservedKeys: Set<string>;
+  slotsToUpsert: ShiftSlot[];
+  targetsToDelete: ShiftSlotTarget[];
+}
+
+/**
+ * Returns true if `slot` already matches the status/branch of `brush` (never true for `erase`).
+ */
+export function slotMatchesBrush(slot: ShiftSlot | undefined, brush: PaintBrush): boolean {
+  if (!slot || brush.kind === 'erase') return false;
+  if (brush.kind === 'status') return slot.status === brush.status;
+  return slot.status === 'KFC' && slot.branchCode === brush.branchCode;
+}
+
+/**
+ * Plans a single tap in Paint/Brush mode: toggles off if the cell already matches the active brush
+ * (except `erase`), skips invalid branch shifts, or paints the cell otherwise.
+ */
+export function buildPaintSingleTapPlan(
+  dateStr: string,
+  shiftNumber: ShiftNumber,
+  brush: PaintBrush,
+  existingSlotsByKey: Map<string, ShiftSlot>,
+  branchMap: Map<string, Branch>,
+): PaintPlan {
+  const key = slotKey(dateStr, shiftNumber);
+  const touchedKeys = new Set<string>([key]);
+  const skippedKeys = new Set<string>();
+  const preservedKeys = new Set<string>();
+  const slotsToUpsert: ShiftSlot[] = [];
+  const targetsToDelete: ShiftSlotTarget[] = [];
+
+  const existing = existingSlotsByKey.get(key);
+
+  if (brush.kind === 'erase') {
+    if (existing) {
+      targetsToDelete.push({ shiftDate: dateStr, shiftNumber });
+    }
+    return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+  }
+
+  if (slotMatchesBrush(existing, brush)) {
+    targetsToDelete.push({ shiftDate: dateStr, shiftNumber });
+    return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+  }
+
+  if (brush.kind === 'kfc') {
+    const branch = branchMap.get(brush.branchCode);
+    if (!branch || !isValidBranchShift(branch, dateStr, shiftNumber)) {
+      skippedKeys.add(key);
+      return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+    }
+    slotsToUpsert.push({
+      shiftDate: dateStr,
+      shiftNumber,
+      status: 'KFC',
+      branchCode: brush.branchCode,
+      procedureCount: 0,
+      note: '',
+    });
+    return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+  }
+
+  slotsToUpsert.push({
+    shiftDate: dateStr,
+    shiftNumber,
+    status: brush.status,
+    branchCode: null,
+    procedureCount: 0,
+    note: '',
+  });
+  return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+}
+
+/**
+ * Plans a freehand Paint/Brush stroke across `cells` (deduplicated), skipping invalid branch
+ * shifts and preserving existing KFC slots whose branch matches `brush`.
+ */
+export function buildPaintStrokePlan(
+  cells: SlotCellCoord[],
+  brush: PaintBrush,
+  existingSlotsByKey: Map<string, ShiftSlot>,
+  branchMap: Map<string, Branch>,
+): PaintPlan {
+  const touchedKeys = new Set<string>();
+  const skippedKeys = new Set<string>();
+  const preservedKeys = new Set<string>();
+  const slotsToUpsert: ShiftSlot[] = [];
+  const targetsToDelete: ShiftSlotTarget[] = [];
+
+  for (const cell of cells) {
+    const key = slotKey(cell.dateStr, cell.shiftNumber);
+    if (touchedKeys.has(key)) continue;
+    touchedKeys.add(key);
+
+    const existing = existingSlotsByKey.get(key);
+
+    if (brush.kind === 'erase') {
+      if (existing) {
+        targetsToDelete.push({ shiftDate: cell.dateStr, shiftNumber: cell.shiftNumber });
+      }
+      continue;
+    }
+
+    if (brush.kind === 'kfc') {
+      const branch = branchMap.get(brush.branchCode);
+      if (!branch || !isValidBranchShift(branch, cell.dateStr, cell.shiftNumber)) {
+        skippedKeys.add(key);
+        continue;
+      }
+      if (existing && existing.status === 'KFC' && existing.branchCode === brush.branchCode) {
+        preservedKeys.add(key);
+        continue;
+      }
+      slotsToUpsert.push({
+        shiftDate: cell.dateStr,
+        shiftNumber: cell.shiftNumber,
+        status: 'KFC',
+        branchCode: brush.branchCode,
+        procedureCount: 0,
+        note: '',
+      });
+      continue;
+    }
+
+    if (existing && existing.status === brush.status) {
+      preservedKeys.add(key);
+      continue;
+    }
+    slotsToUpsert.push({
+      shiftDate: cell.dateStr,
+      shiftNumber: cell.shiftNumber,
+      status: brush.status,
+      branchCode: null,
+      procedureCount: 0,
+      note: '',
+    });
+  }
+
+  return { touchedKeys, skippedKeys, preservedKeys, slotsToUpsert, targetsToDelete };
+}
+
+/**
+ * Plans filling all 3 shifts of `dateStr` using `brush`, respecting branch shift hours and
+ * preserving matching KFC slots.
+ */
+export function buildFillDayPlan(
+  dateStr: string,
+  brush: PaintBrush,
+  existingSlotsByKey: Map<string, ShiftSlot>,
+  branchMap: Map<string, Branch>,
+): PaintPlan {
+  const dayCells: SlotCellCoord[] = [
+    { dateStr, shiftNumber: 1 },
+    { dateStr, shiftNumber: 2 },
+    { dateStr, shiftNumber: 3 },
+  ];
+  return buildPaintStrokePlan(dayCells, brush, existingSlotsByKey, branchMap);
+}
+
+/**
+ * Counts how many of the 3 shifts on `dateStr` are valid operating shifts for `branch`.
+ */
+export function countValidBranchShiftsForDate(branch: Branch, dateStr: string): number {
+  let count = 0;
+  for (const shiftNumber of [1, 2, 3] as const) {
+    if (isValidBranchShift(branch, dateStr, shiftNumber)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Deduplicates `cells` and returns only those that currently have a saved slot in `slotsByKey`.
+ */
+export function collectFilledTargetsFromCells(
+  cells: SlotCellCoord[],
+  slotsByKey: Map<string, ShiftSlot>,
+): ShiftSlotTarget[] {
+  const seen = new Set<string>();
+  const targets: ShiftSlotTarget[] = [];
+  for (const cell of cells) {
+    const key = slotKey(cell.dateStr, cell.shiftNumber);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (slotsByKey.has(key)) {
+      targets.push({ shiftDate: cell.dateStr, shiftNumber: cell.shiftNumber });
+    }
+  }
+  return targets;
 }

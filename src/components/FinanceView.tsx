@@ -130,7 +130,8 @@ export function FinanceView({
             <button
               type="button"
               onClick={() => setSelectedYear((y) => y - 1)}
-              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer"
+              className="h-10 w-10 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer"
+              aria-label="Năm trước"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -140,7 +141,8 @@ export function FinanceView({
             <button
               type="button"
               onClick={() => setSelectedYear((y) => y + 1)}
-              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer"
+              className="h-10 w-10 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-100 cursor-pointer"
+              aria-label="Năm sau"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -149,7 +151,7 @@ export function FinanceView({
           <select
             value={selectedMonthIdx}
             onChange={(e) => setSelectedMonthIdx(Number(e.target.value))}
-            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
+            className="min-h-[40px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>
@@ -260,7 +262,7 @@ export function FinanceView({
             type="button"
             disabled={savingMonth}
             onClick={handleSaveMonthConfig}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white cursor-pointer"
+            className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white cursor-pointer"
           >
             <Save className="h-3.5 w-3.5" />
             {savingMonth ? 'Đang lưu...' : 'Lưu đối soát tháng'}
@@ -277,7 +279,7 @@ export function FinanceView({
               onChange={(e) =>
                 setDraftConfig({ ...draftConfig, payoutRatio: Number(e.target.value) })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="1">100% (Nhận đủ)</option>
               <option value="0.9">90% (Khấu trừ 10%)</option>
@@ -290,6 +292,7 @@ export function FinanceView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               step={10000}
               value={draftConfig.procedureAdjustment}
               onChange={(e) =>
@@ -298,7 +301,7 @@ export function FinanceView({
                   procedureAdjustment: Number(e.target.value) || 0,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
 
@@ -308,6 +311,7 @@ export function FinanceView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               step={50000}
               value={draftConfig.bonusAmount}
               onChange={(e) =>
@@ -316,7 +320,7 @@ export function FinanceView({
                   bonusAmount: Number(e.target.value) || 0,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
 
@@ -326,6 +330,7 @@ export function FinanceView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={100000}
               value={draftConfig.hospitalSalary ?? ''}
@@ -337,7 +342,7 @@ export function FinanceView({
                 })
               }
               placeholder="Cập nhật sau..."
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
 

@@ -2,17 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { cloneDefaultBranches } from '../branches';
 import { getWeekBlock, slotKey } from '../calendar';
 import {
+  MAX_UNDO_HISTORY,
   applySelectionTargets,
   buildDragFillPlan,
+  buildFillDayPlan,
+  buildPaintSingleTapPlan,
+  buildPaintStrokePlan,
   buildPasteWeekPlan,
   captureWeekSnapshot,
   collectFilledTargetsForDate,
   collectFilledTargetsForMonth,
   collectFilledTargetsForWeek,
+  collectFilledTargetsFromCells,
   collectFilledTargetsInRect,
   computeDragFillCoords,
   computeQuickDayPopoverPosition,
+  countValidBranchShiftsForDate,
+  createUndoEntry,
   parseSelectedSlotKeys,
+  popUndoEntry,
+  pushUndoEntry,
+  type UndoEntry,
 } from '../dragFill';
 import type { ShiftSlot } from '../types';
 
@@ -419,5 +429,396 @@ describe('week copy & paste helpers', () => {
     expect(plan.skippedCount).toBe(1);
     expect(plan.slotsToUpsert).toHaveLength(1);
     expect(plan.slotsToUpsert[0].shiftNumber).toBe(1);
+  });
+});
+
+describe('buildDragFillPlan matching KFC branch preservation', () => {
+  it('preserves existing KFC slot with same branchCode while overwriting different status or branch', () => {
+    const sourceCn1: ShiftSlot = {
+      shiftDate: '2026-10-26', // dayIndex 0
+      shiftNumber: 1,
+      status: 'KFC',
+      branchCode: 'CN1',
+      procedureCount: 1,
+      note: '',
+    };
+
+    const existingSameBranch: ShiftSlot = {
+      shiftDate: '2026-10-27', // dayIndex 1 - same CN1, must preserve
+      shiftNumber: 1,
+      status: 'KFC',
+      branchCode: 'CN1',
+      procedureCount: 7,
+      note: 'Ca nhiều thủ thuật',
+    };
+    const existingOtherBranch: ShiftSlot = {
+      shiftDate: '2026-10-28', // dayIndex 2 - CN2, must overwrite
+      shiftNumber: 1,
+      status: 'KFC',
+      branchCode: 'CN2',
+      procedureCount: 3,
+      note: 'Khác chi nhánh',
+    };
+    const existingBv: ShiftSlot = {
+      shiftDate: '2026-10-29', // dayIndex 3 - BV, must overwrite
+      shiftNumber: 1,
+      status: 'BV',
+      branchCode: null,
+      procedureCount: 0,
+      note: 'Trực',
+    };
+
+    const existingMap = new Map<string, ShiftSlot>([
+      [slotKey(existingSameBranch.shiftDate, 1), existingSameBranch],
+      [slotKey(existingOtherBranch.shiftDate, 1), existingOtherBranch],
+      [slotKey(existingBv.shiftDate, 1), existingBv],
+    ]);
+
+    const plan = buildDragFillPlan(
+      week,
+      sourceCn1,
+      { dayIndex: 0, shiftNumber: 1 },
+      { dayIndex: 3, shiftNumber: 1 },
+      branchMap,
+      existingMap,
+    );
+
+    expect(plan.preservedKeys.has(slotKey('2026-10-27', 1))).toBe(true);
+    expect(plan.skippedKeys.size).toBe(0);
+    expect(plan.slotsToUpsert).toEqual([
+      {
+        shiftDate: '2026-10-28',
+        shiftNumber: 1,
+        status: 'KFC',
+        branchCode: 'CN1',
+        procedureCount: 0,
+        note: '',
+      },
+      {
+        shiftDate: '2026-10-29',
+        shiftNumber: 1,
+        status: 'KFC',
+        branchCode: 'CN1',
+        procedureCount: 0,
+        note: '',
+      },
+    ]);
+  });
+
+  it('still skips invalid CN4 Ca 2 while preserving existing CN4 Ca 3', () => {
+    const sourceCn4: ShiftSlot = {
+      shiftDate: '2026-10-26',
+      shiftNumber: 1,
+      status: 'KFC',
+      branchCode: 'CN4',
+      procedureCount: 0,
+      note: '',
+    };
+    const existingCn4Ca3: ShiftSlot = {
+      shiftDate: '2026-10-26',
+      shiftNumber: 3,
+      status: 'KFC',
+      branchCode: 'CN4',
+      procedureCount: 4,
+      note: 'Giữ nguyên',
+    };
+    const existingMap = new Map([[slotKey('2026-10-26', 3), existingCn4Ca3]]);
+
+    const plan = buildDragFillPlan(
+      week,
+      sourceCn4,
+      { dayIndex: 0, shiftNumber: 1 },
+      { dayIndex: 0, shiftNumber: 3 },
+      branchMap,
+      existingMap,
+    );
+
+    expect(plan.skippedKeys.has(slotKey('2026-10-26', 2))).toBe(true);
+    expect(plan.preservedKeys.has(slotKey('2026-10-26', 3))).toBe(true);
+    expect(plan.slotsToUpsert).toHaveLength(0);
+  });
+});
+
+describe('Undo history helpers', () => {
+  const existingKfc: ShiftSlot = {
+    shiftDate: '2026-10-26',
+    shiftNumber: 1,
+    status: 'KFC',
+    branchCode: 'CN1',
+    procedureCount: 5,
+    note: 'Ghi chú cũ',
+  };
+  const existingBv: ShiftSlot = {
+    shiftDate: '2026-10-27',
+    shiftNumber: 2,
+    status: 'BV',
+    branchCode: null,
+    procedureCount: 0,
+    note: 'Trực chính',
+  };
+  const existingMap = new Map<string, ShiftSlot>([
+    [slotKey(existingKfc.shiftDate, 1), existingKfc],
+    [slotKey(existingBv.shiftDate, 2), existingBv],
+  ]);
+
+  it('records restoreDeletes for empty slots and lossless restoreUpserts for overwritten/deleted slots', () => {
+    const entry = createUndoEntry(
+      'dán tuần',
+      existingMap,
+      [
+        {
+          shiftDate: '2026-10-26',
+          shiftNumber: 1,
+          status: 'NGHI',
+          branchCode: null,
+          procedureCount: 0,
+          note: '',
+        },
+        {
+          shiftDate: '2026-10-28', // previously empty
+          shiftNumber: 1,
+          status: 'RANH',
+          branchCode: null,
+          procedureCount: 0,
+          note: '',
+        },
+      ],
+      [
+        { shiftDate: '2026-10-27', shiftNumber: 2 },
+        { shiftDate: '2026-10-29', shiftNumber: 3 }, // not in existingMap
+      ],
+    );
+
+    expect(entry).not.toBeNull();
+    expect(entry!.label).toBe('dán tuần');
+    expect(entry!.restoreDeletes).toEqual([{ shiftDate: '2026-10-28', shiftNumber: 1 }]);
+    expect(entry!.restoreUpserts).toEqual([existingKfc, existingBv]);
+  });
+
+  it('returns null when upsert makes no actual change', () => {
+    const noopEntry = createUndoEntry('no-op', existingMap, [{ ...existingKfc }]);
+    expect(noopEntry).toBeNull();
+  });
+
+  it('caps stack at MAX_UNDO_HISTORY (10) and pops in LIFO order', () => {
+    expect(MAX_UNDO_HISTORY).toBe(10);
+    let stack: UndoEntry[] = [];
+    for (let i = 1; i <= 12; i += 1) {
+      stack = pushUndoEntry(stack, {
+        label: `step-${i}`,
+        restoreUpserts: [],
+        restoreDeletes: [{ shiftDate: '2026-10-26', shiftNumber: 1 }],
+      });
+    }
+    expect(stack).toHaveLength(10);
+    expect(stack[0].label).toBe('step-3');
+    expect(stack[9].label).toBe('step-12');
+
+    // Pushing null is a no-op
+    expect(pushUndoEntry(stack, null)).toBe(stack);
+
+    const firstPop = popUndoEntry(stack);
+    expect(firstPop.entry?.label).toBe('step-12');
+    expect(firstPop.rest).toHaveLength(9);
+
+    const emptyPop = popUndoEntry([]);
+    expect(emptyPop).toEqual({ entry: null, rest: [] });
+  });
+});
+
+describe('Paint/Brush mode planners', () => {
+  const existingCn1: ShiftSlot = {
+    shiftDate: '2026-10-26',
+    shiftNumber: 1,
+    status: 'KFC',
+    branchCode: 'CN1',
+    procedureCount: 6,
+    note: 'Giữ thủ thuật',
+  };
+  const existingBv: ShiftSlot = {
+    shiftDate: '2026-10-26',
+    shiftNumber: 3,
+    status: 'BV',
+    branchCode: null,
+    procedureCount: 0,
+    note: '',
+  };
+  const existingMap = new Map<string, ShiftSlot>([
+    [slotKey('2026-10-26', 1), existingCn1],
+    [slotKey('2026-10-26', 3), existingBv],
+  ]);
+
+  it('single-tap paints empty cell, toggles off matching cell, overwrites different cell, and handles erase', () => {
+    // Empty cell with RANH
+    const paintEmpty = buildPaintSingleTapPlan(
+      '2026-10-27',
+      1,
+      { kind: 'status', status: 'RANH' },
+      existingMap,
+      branchMap,
+    );
+    expect(paintEmpty.slotsToUpsert).toEqual([
+      { shiftDate: '2026-10-27', shiftNumber: 1, status: 'RANH', branchCode: null, procedureCount: 0, note: '' },
+    ]);
+    expect(paintEmpty.targetsToDelete).toEqual([]);
+
+    // Tap matching status -> toggle off
+    const toggleStatusOff = buildPaintSingleTapPlan(
+      '2026-10-26',
+      3,
+      { kind: 'status', status: 'BV' },
+      existingMap,
+      branchMap,
+    );
+    expect(toggleStatusOff.targetsToDelete).toEqual([{ shiftDate: '2026-10-26', shiftNumber: 3 }]);
+    expect(toggleStatusOff.slotsToUpsert).toEqual([]);
+
+    // Tap matching KFC branch -> toggle off
+    const toggleKfcOff = buildPaintSingleTapPlan(
+      '2026-10-26',
+      1,
+      { kind: 'kfc', branchCode: 'CN1' },
+      existingMap,
+      branchMap,
+    );
+    expect(toggleKfcOff.targetsToDelete).toEqual([{ shiftDate: '2026-10-26', shiftNumber: 1 }]);
+
+    // Tap different branch -> overwrite
+    const overwriteBranch = buildPaintSingleTapPlan(
+      '2026-10-26',
+      1,
+      { kind: 'kfc', branchCode: 'CN2' },
+      existingMap,
+      branchMap,
+    );
+    expect(overwriteBranch.slotsToUpsert[0]).toMatchObject({ status: 'KFC', branchCode: 'CN2' });
+
+    // Invalid CN4 Ca 2 -> skipped
+    const invalidCn4 = buildPaintSingleTapPlan(
+      '2026-10-26',
+      2,
+      { kind: 'kfc', branchCode: 'CN4' },
+      existingMap,
+      branchMap,
+    );
+    expect(invalidCn4.skippedKeys.has(slotKey('2026-10-26', 2))).toBe(true);
+    expect(invalidCn4.slotsToUpsert).toEqual([]);
+
+    // Erase filled vs empty
+    const eraseFilled = buildPaintSingleTapPlan(
+      '2026-10-26',
+      1,
+      { kind: 'erase' },
+      existingMap,
+      branchMap,
+    );
+    expect(eraseFilled.targetsToDelete).toEqual([{ shiftDate: '2026-10-26', shiftNumber: 1 }]);
+
+    const eraseEmpty = buildPaintSingleTapPlan(
+      '2026-10-27',
+      2,
+      { kind: 'erase' },
+      existingMap,
+      branchMap,
+    );
+    expect(eraseEmpty.targetsToDelete).toEqual([]);
+  });
+
+  it('freehand stroke supports overnight shifts, deduplicates cells, skips invalid CN4 Ca 2, and preserves matching KFC', () => {
+    const strokePlan = buildPaintStrokePlan(
+      [
+        { dateStr: '2026-10-26', shiftNumber: 1 }, // already CN1 -> preserve
+        { dateStr: '2026-10-26', shiftNumber: 3 }, // was BV -> overwrite CN1
+        { dateStr: '2026-10-27', shiftNumber: 1 }, // empty -> upsert CN1
+        { dateStr: '2026-10-27', shiftNumber: 1 }, // duplicate revisit
+        { dateStr: '2026-10-27', shiftNumber: 2 }, // empty -> upsert CN1
+      ],
+      { kind: 'kfc', branchCode: 'CN1' },
+      existingMap,
+      branchMap,
+    );
+
+    expect(strokePlan.preservedKeys.has(slotKey('2026-10-26', 1))).toBe(true);
+    expect(strokePlan.slotsToUpsert.map((s) => `${s.shiftDate}|${s.shiftNumber}`)).toEqual([
+      '2026-10-26|3',
+      '2026-10-27|1',
+      '2026-10-27|2',
+    ]);
+
+    const cn4Stroke = buildPaintStrokePlan(
+      [
+        { dateStr: '2026-10-27', shiftNumber: 1 },
+        { dateStr: '2026-10-27', shiftNumber: 2 }, // invalid for CN4
+        { dateStr: '2026-10-27', shiftNumber: 3 },
+      ],
+      { kind: 'kfc', branchCode: 'CN4' },
+      existingMap,
+      branchMap,
+    );
+    expect(cn4Stroke.skippedKeys.has(slotKey('2026-10-27', 2))).toBe(true);
+    expect(cn4Stroke.slotsToUpsert).toHaveLength(2);
+
+    const eraseStroke = buildPaintStrokePlan(
+      [
+        { dateStr: '2026-10-26', shiftNumber: 1 },
+        { dateStr: '2026-10-26', shiftNumber: 2 }, // empty
+        { dateStr: '2026-10-26', shiftNumber: 3 },
+      ],
+      { kind: 'erase' },
+      existingMap,
+      branchMap,
+    );
+    expect(eraseStroke.targetsToDelete).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 1 },
+      { shiftDate: '2026-10-26', shiftNumber: 3 },
+    ]);
+  });
+
+  it('buildFillDayPlan supports branches (filtering CN4 Ca 2) and countValidBranchShiftsForDate', () => {
+    const cn1 = branchMap.get('CN1')!;
+    const cn4 = branchMap.get('CN4')!;
+    expect(countValidBranchShiftsForDate(cn1, '2026-10-26')).toBe(3);
+    expect(countValidBranchShiftsForDate(cn4, '2026-10-26')).toBe(2);
+
+    const cn4Map = new Map<string, ShiftSlot>([
+      [
+        slotKey('2026-10-26', 1),
+        {
+          shiftDate: '2026-10-26',
+          shiftNumber: 1,
+          status: 'KFC',
+          branchCode: 'CN4',
+          procedureCount: 3,
+          note: 'Giữ',
+        },
+      ],
+    ]);
+    const dayPlan = buildFillDayPlan(
+      '2026-10-26',
+      { kind: 'kfc', branchCode: 'CN4' },
+      cn4Map,
+      branchMap,
+    );
+    expect(dayPlan.preservedKeys.has(slotKey('2026-10-26', 1))).toBe(true);
+    expect(dayPlan.skippedKeys.has(slotKey('2026-10-26', 2))).toBe(true);
+    expect(dayPlan.slotsToUpsert).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 3, status: 'KFC', branchCode: 'CN4', procedureCount: 0, note: '' },
+    ]);
+  });
+
+  it('collectFilledTargetsFromCells deduplicates and filters empty cells across days', () => {
+    const targets = collectFilledTargetsFromCells(
+      [
+        { dateStr: '2026-10-26', shiftNumber: 1 },
+        { dateStr: '2026-10-26', shiftNumber: 2 }, // empty
+        { dateStr: '2026-10-26', shiftNumber: 1 }, // duplicate
+        { dateStr: '2026-10-26', shiftNumber: 3 },
+      ],
+      existingMap,
+    );
+    expect(targets).toEqual([
+      { shiftDate: '2026-10-26', shiftNumber: 1 },
+      { shiftDate: '2026-10-26', shiftNumber: 3 },
+    ]);
   });
 });

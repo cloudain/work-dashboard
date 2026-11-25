@@ -256,7 +256,7 @@ export function SettingsView({
             type="button"
             disabled={savingSettings}
             onClick={handleSaveDefaults}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer self-start sm:self-auto"
+            className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer self-start sm:self-auto"
           >
             <Save className="h-3.5 w-3.5" />
             Lưu cài đặt
@@ -270,6 +270,7 @@ export function SettingsView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={10000}
               value={draftSettings.defaultShiftRate}
@@ -279,7 +280,7 @@ export function SettingsView({
                   defaultShiftRate: Number(e.target.value) || 0,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -288,6 +289,7 @@ export function SettingsView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={5000}
               value={draftSettings.defaultProcedureRate}
@@ -297,7 +299,7 @@ export function SettingsView({
                   defaultProcedureRate: Number(e.target.value) || 0,
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -312,7 +314,7 @@ export function SettingsView({
                   defaultPayoutRatio: Number(e.target.value),
                 })
               }
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="1">100%</option>
               <option value="0.9">90%</option>
@@ -324,6 +326,7 @@ export function SettingsView({
             </label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={500000}
               value={draftSettings.monthlyIncomeGoal ?? ''}
@@ -335,7 +338,7 @@ export function SettingsView({
                 })
               }
               placeholder="Ví dụ: 10000000"
-              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
         </div>
@@ -378,7 +381,7 @@ export function SettingsView({
                 },
               })
             }
-            className="inline-flex items-center gap-1 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer self-start sm:self-auto"
+            className="min-h-[40px] inline-flex items-center gap-1 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer self-start sm:self-auto"
           >
             <Plus className="h-3.5 w-3.5" />
             Thêm chi nhánh
@@ -405,7 +408,7 @@ export function SettingsView({
                   <button
                     type="button"
                     onClick={() => setEditingBranch(b)}
-                    className="text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
+                    className="min-h-[36px] px-2 text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
                   >
                     Chỉnh sửa
                   </button>
@@ -552,7 +555,7 @@ export function SettingsView({
               <button
                 type="button"
                 onClick={handleCopyFeed}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 {copiedFeed ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                 {copiedFeed ? 'Đã copy' : 'Copy link'}
@@ -560,7 +563,7 @@ export function SettingsView({
               <button
                 type="button"
                 onClick={handleRegenerateToken}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Đổi token
@@ -576,7 +579,7 @@ export function SettingsView({
           <button
             type="button"
             onClick={handleDownloadFullIcs}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
           >
             <Download className="h-4 w-4" />
             Tải toàn bộ lịch KFC (.ics)
@@ -597,7 +600,7 @@ export function SettingsView({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <label className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer">
+          <label className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer">
             <Upload className="h-4 w-4" />
             Chọn file Excel lịch sử (.xlsx)
             <input type="file" accept=".xlsx,.xls" onChange={handleExcelFile} className="hidden" />
@@ -606,13 +609,13 @@ export function SettingsView({
           <button
             type="button"
             onClick={handleExportJson}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+            className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
           >
             <Download className="h-4 w-4" />
             Xuất Backup JSON
           </button>
 
-          <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+          <label className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
             <Upload className="h-4 w-4" />
             Khôi phục từ JSON
             <input type="file" accept=".json" onChange={handleRestoreJson} className="hidden" />

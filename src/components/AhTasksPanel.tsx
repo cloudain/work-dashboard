@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CheckCircle2, Clock, FileText, Plus, Trash2 } from 'lucide-react';
 import { currentYearMonth } from '../domain/calendar';
 import { computeReceivables, formatVND } from '../domain/finance';
@@ -30,6 +30,13 @@ export function AhTasksPanel({
   const [status, setStatus] = useState<AhTaskStatus>('DANG_LAM');
   const [receivedMonth, setReceivedMonth] = useState(defaultMonth || currentYearMonth());
   const [note, setNote] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmDeleteId) return;
+    const timer = window.setTimeout(() => setConfirmDeleteId(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDeleteId]);
 
   const receivables = useMemo(() => computeReceivables(tasks), [tasks]);
 
@@ -91,7 +98,7 @@ export function AhTasksPanel({
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-3.5 py-2 text-xs font-semibold text-white cursor-pointer self-start sm:self-auto"
+          className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-3.5 py-2 text-xs font-semibold text-white cursor-pointer self-start sm:self-auto"
         >
           <Plus className="h-4 w-4" />
           Thêm Task AH
@@ -132,13 +139,14 @@ export function AhTasksPanel({
             <label className="block text-xs font-medium text-slate-600 mb-1">Số tiền (VNĐ)</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={50000}
               required
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="1500000"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="min-h-[40px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -180,13 +188,13 @@ export function AhTasksPanel({
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
+              className="min-h-[40px] rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer"
             >
               Huỷ
             </button>
             <button
               type="submit"
-              className="rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer"
+              className="min-h-[40px] rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-xs font-semibold text-white cursor-pointer"
             >
               Lưu Task AH
             </button>
@@ -207,7 +215,7 @@ export function AhTasksPanel({
             key={tab.id}
             type="button"
             onClick={() => setFilter(tab.id)}
-            className={`rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+            className={`min-h-[38px] rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
               filter === tab.id
                 ? 'bg-slate-900 text-white'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -247,19 +255,42 @@ export function AhTasksPanel({
                     type="button"
                     onClick={() => cycleStatus(task)}
                     title="Chạm để chuyển trạng thái tiếp theo"
-                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold cursor-pointer ${meta.cls}`}
+                    className={`min-h-[40px] inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${meta.cls}`}
                   >
                     {task.status === 'DA_NHAN' && <CheckCircle2 className="h-3.5 w-3.5" />}
                     {meta.label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTask(task.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                    title="Xoá Task AH"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {confirmDeleteId === task.id ? (
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteId(null);
+                          void onDeleteTask(task.id);
+                        }}
+                        className="min-h-[40px] rounded-lg bg-rose-600 hover:bg-rose-700 px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
+                      >
+                        Xoá?
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="min-h-[40px] rounded-lg border border-slate-300 bg-white hover:bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 cursor-pointer"
+                      >
+                        Huỷ
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(task.id)}
+                      className="h-10 w-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      title="Xoá Task AH"
+                      aria-label={`Xoá Task AH ${task.title}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

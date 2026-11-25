@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, X } from 'lucide-react';
+import { Check, Copy, Download, Share2, X } from 'lucide-react';
 import {
   formatShortDateVN,
   getUpcomingWeeks,
@@ -39,6 +39,27 @@ export function ManagerExportModal({
   const [hideBranchLabels, setHideBranchLabels] = useState(false);
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const canShareImage = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') {
+      return false;
+    }
+    try {
+      const probe = new File([''], 'lich.png', { type: 'image/png' });
+      return navigator.canShare({ files: [probe] });
+    } catch {
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   const selectedWeeks = useMemo(
     () => candidateWeeks.filter((w) => selectedMondays.includes(w.mondayStr)),
@@ -88,8 +109,28 @@ export function ManagerExportModal({
     }, 'image/png');
   };
 
+  const handleShare = () => {
+    if (!canvasRef.current) return;
+    const fileName = `lich-xanh-do-${selectedWeeks[0]?.mondayStr ?? 'export'}.png`;
+    canvasRef.current.toBlob(async (blob) => {
+      if (!blob) return;
+      try {
+        const file = new File([blob], fileName, { type: 'image/png' });
+        await navigator.share({ files: [file] });
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        handleDownload();
+      }
+    }, 'image/png');
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/55 p-0 sm:p-4">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/55 p-0 sm:p-4"
+    >
       <div className="w-full max-w-4xl rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92dvh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
@@ -101,7 +142,8 @@ export function ManagerExportModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+            aria-label="Đóng"
+            className="h-10 w-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -145,22 +187,45 @@ export function ManagerExportModal({
         </div>
 
         <div className="px-4 sm:px-5 py-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:pb-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 cursor-pointer"
-          >
-            {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Đã copy ảnh' : 'Copy ảnh'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-sm font-semibold text-white cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
-            Tải PNG
-          </button>
+          {canShareImage ? (
+            <>
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+                Tải PNG
+              </button>
+              <button
+                type="button"
+                onClick={handleShare}
+                className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-sm font-semibold text-white cursor-pointer"
+              >
+                <Share2 className="h-4 w-4" />
+                Chia sẻ ảnh
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 cursor-pointer"
+              >
+                {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                {copied ? 'Đã copy ảnh' : 'Copy ảnh'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 px-4 py-2 text-sm font-semibold text-white cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+                Tải PNG
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

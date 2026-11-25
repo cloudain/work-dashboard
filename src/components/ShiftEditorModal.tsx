@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Minus, Plus, Trash2, X } from 'lucide-react';
 import { getBranchShiftTime, isValidBranchShift } from '../domain/branches';
 import { formatDateVN } from '../domain/calendar';
@@ -41,6 +41,14 @@ export function ShiftEditorModal({
   const [note, setNote] = useState<string>(existingSlot?.note ?? '');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const selectedBranch = branches.find((b) => b.code === branchCode);
   const selectedRange =
     status === 'KFC' && selectedBranch
@@ -78,7 +86,12 @@ export function ShiftEditorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[1px] p-0 sm:p-4">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[1px] p-0 sm:p-4"
+    >
       <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
@@ -92,7 +105,8 @@ export function ShiftEditorModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+            aria-label="Đóng"
+            className="h-10 w-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -191,7 +205,7 @@ export function ShiftEditorModal({
                   <button
                     type="button"
                     onClick={() => setProcedureCount((c) => Math.max(0, c - 1))}
-                    className="h-9 w-9 rounded-lg border border-slate-300 bg-white flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    className="h-10 w-10 rounded-lg border border-slate-300 bg-white flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer"
                   >
                     <Minus className="h-4 w-4" />
                   </button>
@@ -201,7 +215,7 @@ export function ShiftEditorModal({
                   <button
                     type="button"
                     onClick={() => setProcedureCount((c) => c + 1)}
-                    className="h-9 w-9 rounded-lg border border-slate-300 bg-white flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    className="h-10 w-10 rounded-lg border border-slate-300 bg-white flex items-center justify-center text-slate-700 hover:bg-slate-100 cursor-pointer"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
