@@ -23,3 +23,17 @@ When an agent session is started directly inside this repository rather than fro
 - Repo-local specs, `.science/` notebooks (if research), and docs live inside this repository.
 - Cross-repo plans belong in `../home-vault/.scratch/`, and cross-project durable insights belong in `../home-vault/wiki/`.
 - Keep Git history isolated to this repository.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `cloudain/work-dashboard` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`GLOSSARY.md` and `docs/adr/` at repo root). See `docs/agents/domain.md`.
