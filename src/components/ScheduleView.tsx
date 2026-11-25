@@ -9,6 +9,7 @@ import {
   Copy,
   Download,
   Eraser,
+  GripVertical,
   Image as ImageIcon,
   LayoutGrid,
   List,
@@ -101,6 +102,7 @@ interface ActiveDrag {
   startY: number;
   pointerId: number;
   isDragging: boolean;
+  isTouch: boolean;
 }
 
 interface DeleteDrag {
@@ -444,6 +446,31 @@ export function ScheduleView({
       return nextIsDragging;
     };
 
+    const commitDrag = (cur: ActiveDrag) => {
+      clearDrag();
+      if (!cur.isDragging) return;
+      suppressClickRef.current = true;
+      requestAnimationFrame(() => {
+        suppressClickRef.current = false;
+      });
+      const week = weeksRef.current[cur.weekIdx];
+      if (!week) return;
+      const plan = buildDragFillPlan(
+        week,
+        cur.sourceSlot,
+        cur.start,
+        cur.end,
+        branchMapRef.current,
+        slotsByKeyRef.current,
+      );
+      if (plan.slotsToUpsert.length > 0) {
+        const entry = createUndoEntry('kéo-tô lịch', slotsByKeyRef.current, plan.slotsToUpsert);
+        void onBulkUpsertSlotsRef.current(plan.slotsToUpsert).then(() => {
+          recordUndoAndToastRef.current(entry, `Đã tô ${plan.slotsToUpsert.length} ô lịch.`);
+        });
+      }
+    };
+
     const onPointerMove = (e: PointerEvent) => {
       const cur = dragRef.current;
       if (!cur || e.pointerId !== cur.pointerId) return;
@@ -463,6 +490,19 @@ export function ScheduleView({
       }
     };
 
+    const onTouchEnd = () => {
+      const cur = dragRef.current;
+      if (!cur?.isTouch) return;
+      commitDrag(cur);
+    };
+
+    const onTouchCancel = () => {
+      const cur = dragRef.current;
+      if (cur?.isTouch) {
+        clearDrag();
+      }
+    };
+
     const onContextMenu = (e: Event) => {
       if (dragRef.current?.isDragging) {
         e.preventDefault();
@@ -472,37 +512,16 @@ export function ScheduleView({
     const onPointerUp = (e: PointerEvent) => {
       const cur = dragRef.current;
       if (!cur || e.pointerId !== cur.pointerId) return;
-      clearDrag();
-
-      if (cur.isDragging) {
-        suppressClickRef.current = true;
-        requestAnimationFrame(() => {
-          suppressClickRef.current = false;
-        });
-        const week = weeksRef.current[cur.weekIdx];
-        if (!week) return;
-        const plan = buildDragFillPlan(
-          week,
-          cur.sourceSlot,
-          cur.start,
-          cur.end,
-          branchMapRef.current,
-          slotsByKeyRef.current,
-        );
-        if (plan.slotsToUpsert.length > 0) {
-          const entry = createUndoEntry('kéo-tô lịch', slotsByKeyRef.current, plan.slotsToUpsert);
-          void onBulkUpsertSlotsRef.current(plan.slotsToUpsert).then(() => {
-            recordUndoAndToastRef.current(entry, `Đã tô ${plan.slotsToUpsert.length} ô lịch.`);
-          });
-        }
-      }
+      commitDrag(cur);
     };
 
     const onPointerCancel = (e: PointerEvent) => {
       const cur = dragRef.current;
-      if (cur && e.pointerId === cur.pointerId) {
-        clearDrag();
-      }
+      if (!cur || e.pointerId !== cur.pointerId) return;
+      // Mobile browsers often fire pointercancel right after scroll-check even when touchmove is prevented;
+      // let touchend/touchcancel finalize active touch drags.
+      if (cur.isTouch && cur.isDragging) return;
+      clearDrag();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -513,6 +532,8 @@ export function ScheduleView({
 
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchCancel);
     window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
@@ -520,6 +541,8 @@ export function ScheduleView({
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchCancel);
       window.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
@@ -539,8 +562,32 @@ export function ScheduleView({
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if ((e.target as HTMLElement).closest('[data-no-drag="true"]')) return;
 
-    if (e.pointerType === 'touch') {
-      if (fromHandle) return;
+    const isTouch = e.pointerType === 'touch';
+
+    if (fromHandle) {
+      e.preventDefault();
+      if (isTouch && typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(15);
+      }
+      setQuickDay(null);
+      const coord: GridCoord = { dayIndex, shiftNumber };
+      const next: ActiveDrag = {
+        weekIdx,
+        start: coord,
+        end: coord,
+        sourceSlot: slot,
+        startX: e.clientX,
+        startY: e.clientY,
+        pointerId: e.pointerId,
+        isDragging: true,
+        isTouch,
+      };
+      dragRef.current = next;
+      setDrag(next);
+      return;
+    }
+
+    if (isTouch) {
       longPressCleanupRef.current?.();
       const pointerId = e.pointerId;
       const startX = e.clientX;
@@ -553,8 +600,10 @@ export function ScheduleView({
         cleaned = true;
         window.clearTimeout(timerId);
         window.removeEventListener('pointermove', onPreMove);
+        window.removeEventListener('touchmove', onPreTouchMove);
         window.removeEventListener('pointerup', onPreEnd);
-        window.removeEventListener('pointercancel', onPreEnd);
+        window.removeEventListener('touchend', onPreTouchEnd);
+        window.removeEventListener('touchcancel', onPreTouchEnd);
         if (longPressCleanupRef.current === cleanup) {
           longPressCleanupRef.current = null;
         }
@@ -562,7 +611,18 @@ export function ScheduleView({
 
       const onPreMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 8) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 10) {
+          cleanup();
+        }
+      };
+
+      const onPreTouchMove = (ev: TouchEvent) => {
+        if (dragRef.current?.isDragging) {
+          ev.preventDefault();
+          return;
+        }
+        const t = ev.touches[0];
+        if (t && Math.hypot(t.clientX - startX, t.clientY - startY) > 10) {
           cleanup();
         }
       };
@@ -571,6 +631,10 @@ export function ScheduleView({
         if (ev.pointerId === pointerId) {
           cleanup();
         }
+      };
+
+      const onPreTouchEnd = () => {
+        cleanup();
       };
 
       const timerId = window.setTimeout(() => {
@@ -588,6 +652,7 @@ export function ScheduleView({
           startY,
           pointerId,
           isDragging: true,
+          isTouch: true,
         };
         dragRef.current = next;
         setDrag(next);
@@ -595,13 +660,11 @@ export function ScheduleView({
 
       longPressCleanupRef.current = cleanup;
       window.addEventListener('pointermove', onPreMove);
+      window.addEventListener('touchmove', onPreTouchMove, { passive: false });
       window.addEventListener('pointerup', onPreEnd);
-      window.addEventListener('pointercancel', onPreEnd);
+      window.addEventListener('touchend', onPreTouchEnd);
+      window.addEventListener('touchcancel', onPreTouchEnd);
       return;
-    }
-
-    if (fromHandle) {
-      e.preventDefault();
     }
 
     setQuickDay(null);
@@ -614,7 +677,8 @@ export function ScheduleView({
       startX: e.clientX,
       startY: e.clientY,
       pointerId: e.pointerId,
-      isDragging: fromHandle,
+      isDragging: false,
+      isTouch: false,
     };
     dragRef.current = next;
     setDrag(next);
@@ -835,11 +899,8 @@ export function ScheduleView({
       if (t) appendCellFromPoint(t.clientX, t.clientY);
     };
 
-    const onPointerUp = (e: PointerEvent) => {
-      const cur = deleteSwipeRef.current;
-      if (!cur || e.pointerId !== cur.pointerId) return;
+    const commitSwipe = (cur: DeleteSwipeState) => {
       clearSwipe();
-
       if (cur.hasMoved) {
         suppressClickRef.current = true;
         requestAnimationFrame(() => {
@@ -852,9 +913,21 @@ export function ScheduleView({
       }
     };
 
+    const onPointerUp = (e: PointerEvent) => {
+      const cur = deleteSwipeRef.current;
+      if (!cur || e.pointerId !== cur.pointerId) return;
+      commitSwipe(cur);
+    };
+
+    const onTouchEnd = () => {
+      const cur = deleteSwipeRef.current;
+      if (!cur) return;
+      commitSwipe(cur);
+    };
+
     const onPointerCancel = (e: PointerEvent) => {
       const cur = deleteSwipeRef.current;
-      if (cur && e.pointerId === cur.pointerId) clearSwipe();
+      if (cur && e.pointerId === cur.pointerId && !cur.hasMoved) clearSwipe();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -863,12 +936,16 @@ export function ScheduleView({
 
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', clearSwipe);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', clearSwipe);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('keydown', onKeyDown);
@@ -932,9 +1009,7 @@ export function ScheduleView({
       if (t) appendCellFromPoint(t.clientX, t.clientY);
     };
 
-    const onPointerUp = (e: PointerEvent) => {
-      const cur = paintStrokeRef.current;
-      if (!cur || e.pointerId !== cur.pointerId) return;
+    const commitStroke = (cur: PaintStrokeState) => {
       clearStroke();
 
       suppressClickRef.current = true;
@@ -989,9 +1064,21 @@ export function ScheduleView({
       })();
     };
 
+    const onPointerUp = (e: PointerEvent) => {
+      const cur = paintStrokeRef.current;
+      if (!cur || e.pointerId !== cur.pointerId) return;
+      commitStroke(cur);
+    };
+
+    const onTouchEnd = () => {
+      const cur = paintStrokeRef.current;
+      if (!cur) return;
+      commitStroke(cur);
+    };
+
     const onPointerCancel = (e: PointerEvent) => {
       const cur = paintStrokeRef.current;
-      if (cur && e.pointerId === cur.pointerId) clearStroke();
+      if (cur && e.pointerId === cur.pointerId && !cur.hasMoved) clearStroke();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1000,12 +1087,16 @@ export function ScheduleView({
 
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', clearStroke);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', clearStroke);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('keydown', onKeyDown);
@@ -1666,6 +1757,9 @@ export function ScheduleView({
         <span className="hidden sm:inline text-[11px] text-slate-400">
           Mẹo: Chạm tiêu đề ngày để tô cả ngày · Kéo ngang/dọc từ ô đã chọn để sao chép nhanh
         </span>
+        <span className="sm:hidden w-full text-[11px] text-slate-400">
+          Mẹo: Kéo nút ⋮ trên ô (hoặc nhấn giữ) để kéo-tô nhanh · Dùng Tô nhanh để quét nhiều ô
+        </span>
       </div>
 
       {/* Weekly Grids */}
@@ -1749,7 +1843,11 @@ export function ScheduleView({
 
               {/* Mobile Day-by-Day View */}
               {mobileLayout === 'days' && (
-                <div className="sm:hidden divide-y divide-slate-100">
+                <div
+                  className={`sm:hidden divide-y divide-slate-100 ${
+                    drag?.isDragging && drag.weekIdx === idx ? 'touch-none select-none' : ''
+                  }`}
+                >
                   {week.days.map((day) => {
                     const isToday = day.dateStr === today;
                     const dayFilledTargets = collectFilledTargetsForDate(day.dateStr, slotsByKey);
@@ -1893,7 +1991,7 @@ export function ScheduleView({
                                   data-grid-day={day.dayIndex}
                                   data-grid-shift={shiftNumber}
                                   data-grid-date={day.dateStr}
-                                  disabled={deleteMode}
+                                  aria-disabled={deleteMode}
                                   onPointerDown={(e) => {
                                     if (paintMode) {
                                       startPaintPointerDown(e, day.dateStr, shiftNumber);
@@ -2019,11 +2117,35 @@ export function ScheduleView({
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-1">
-                                  <span className="text-[10px] font-medium opacity-70">
-                                    Ca {shiftNumber}
-                                  </span>
-                                  {slot.note && !isSelectedForDelete && (
-                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-500 shrink-0" />
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <span className="text-[10px] font-medium opacity-70">
+                                      Ca {shiftNumber}
+                                    </span>
+                                    {slot.note && !isSelectedForDelete && (
+                                      <span className="h-1.5 w-1.5 rounded-full bg-slate-500 shrink-0" />
+                                    )}
+                                  </div>
+                                  {!deleteMode && !paintMode && !inActiveWeekDrag && (
+                                    <span
+                                      data-drag-handle="true"
+                                      role="presentation"
+                                      onPointerDown={(e) => {
+                                        e.stopPropagation();
+                                        startCellPointerDown(
+                                          e,
+                                          idx,
+                                          day.dayIndex,
+                                          shiftNumber,
+                                          slot,
+                                          true,
+                                        );
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Kéo để tô nhanh sang các ô khác"
+                                      className="touch-none cursor-grab active:cursor-grabbing h-6 w-6 -mr-1 -mt-1 rounded-md flex items-center justify-center text-slate-500/80 hover:text-teal-700 hover:bg-white/70 active:bg-white/90 shrink-0"
+                                    >
+                                      <GripVertical className="h-3.5 w-3.5" />
+                                    </span>
                                   )}
                                 </div>
 
@@ -2498,7 +2620,7 @@ export function ScheduleView({
                                         }}
                                         onClick={(e) => e.stopPropagation()}
                                         title="Kéo ngang hoặc dọc để tô nhanh"
-                                        className="hidden sm:block [@media(hover:none)]:hidden touch-none cursor-crosshair absolute bottom-1 right-1 h-3 w-3 rounded-sm bg-teal-600/80 border border-white shadow-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="touch-none cursor-crosshair absolute bottom-1 right-1 h-4 w-4 sm:h-3 sm:w-3 rounded-sm bg-teal-600/80 border border-white shadow-xs opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                       />
                                     )}
 
