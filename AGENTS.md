@@ -9,7 +9,7 @@ When an agent session is started directly inside this repository rather than fro
 - **Home Repo**: `../home-vault` (or `~/AI Workspaces/home-vault` on macOS / `%USERPROFILE%\AI Workspaces\home-vault` on Windows)
 - **Cross-project standards**: consult `../home-vault/docs/standards/` as needed (`coding.md`, `medical.md`, `writing-and-courses.md`)
 - **Long-term memory & glossary**: consult `../home-vault/wiki/index.md` and `../home-vault/GLOSSARY.md` before cross-repo or recurring architectural decisions.
-- **Active handoffs**: check `../home-vault/handoff/ACTIVE.md` when resuming cross-device tasks (macOS ↔ Windows); update via `/handoff` before switching machines.
+- **Cross-Device WIP**: check `../home-vault/wip/ACTIVE.md` when resuming cross-device tasks (macOS ↔ Windows); update via `/wip` before switching machines.
 
 ## Local Development & Verification
 
